@@ -43,7 +43,6 @@ class Client:
             print('Handshake Done. EOF is:', eof_token.decode())
 
             server_messages = self.receive_message_ending_with_token(client_socket, 1024, eof_token)
-            print(server_messages.decode())
             return client_socket, eof_token
 
     def issue_cd(self, command_and_arg, client_socket, eof_token):

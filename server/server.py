@@ -1,6 +1,7 @@
 import secrets
 import socket
 import random
+import sys
 from threading import Thread
 import os
 import shutil
@@ -123,7 +124,6 @@ class Server:
             shutil.rmtree(file_name)
         else:
             print("File not found..!")
-        return os.getcwd()
 
     def handle_ul(
             self, current_working_directory, file_name, service_socket, eof_token
@@ -155,7 +155,6 @@ class Server:
         """
         file = open(os.path.join(current_working_directory, file_name), 'rb')
         service_socket.sendall(file.read())
-        return os.getcwd()
 
     def handle_info(self, current_working_directory, file_name):
         """
@@ -185,7 +184,6 @@ class Server:
             os.rename(source_path, destination_path)
         return os.getcwd()
 
-
 class ClientThread(Thread):
     def __init__(self, server: Server, service_socket: socket.socket, address: str, eof_token: str):
         Thread.__init__(self)
@@ -212,7 +210,7 @@ class ClientThread(Thread):
                 curr_working_dir = self.server_obj.handle_mkdir(curr_working_dir, new_working_dir)
             elif "rm" in client_command.decode():
                 object_name = client_command.decode().split("rm")[1].strip()
-                curr_working_dir = self.server_obj.handle_rm(curr_working_dir, object_name)
+                self.server_obj.handle_rm(curr_working_dir, object_name)
             elif "mv" in client_command.decode():
                 arguments = client_command.decode().split("mv")[1].split(" ")
                 curr_working_dir = self.server_obj.handle_mv(curr_working_dir, arguments[1], arguments[2])
@@ -222,7 +220,7 @@ class ClientThread(Thread):
                 self.service_socket.sendall(str.encode(str(file_size)))
             elif "dl" in client_command.decode():
                 arguments = client_command.decode().split("dl")[1].strip()
-                curr_working_dir = self.server_obj.handle_dl(curr_working_dir, arguments, self.service_socket, eof_token)
+                self.server_obj.handle_dl(curr_working_dir, arguments, self.service_socket, eof_token)
             elif "ul" in client_command.decode():
                 arguments = client_command.decode().split("ul")[1].strip()
                 curr_working_dir = self.server_obj.handle_ul(curr_working_dir, arguments, self.service_socket, eof_token)
@@ -242,6 +240,9 @@ class ClientThread(Thread):
         # send current dir info
 
         print('Connection closed from:', self.address)
+        self.service_socket.close()
+        sys.exit()
+
 
 
 def run_server():
