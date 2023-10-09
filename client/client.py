@@ -55,7 +55,7 @@ class Client:
         :param client_socket: the active client socket object.
         :param eof_token: a token to indicate the end of the message.
         """
-        client_socket.sendall(command_and_arg.encode())
+        client_socket.sendall(command_and_arg.encode() + eof_token)
         curr_working_dir = self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def issue_mkdir(self, command_and_arg, client_socket, eof_token):
@@ -67,9 +67,8 @@ class Client:
         :param client_socket: the active client socket object.
         :param eof_token: a token to indicate the end of the message.
         """
-        client_socket.sendall(command_and_arg.encode())
-        curr_working_dir = self.receive_message_ending_with_token(client_socket, 1024, eof_token)
-        # return curr_working_dir
+        client_socket.sendall(command_and_arg.encode() + eof_token)
+        self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def issue_rm(self, command_and_arg, client_socket, eof_token):
         """
@@ -80,9 +79,8 @@ class Client:
         :param client_socket: the active client socket object.
         :param eof_token: a token to indicate the end of the message.
         """
-        client_socket.sendall(command_and_arg.encode())
-        curr_working_dir = self.receive_message_ending_with_token(client_socket, 1024, eof_token)
-
+        client_socket.sendall(command_and_arg.encode() + eof_token)
+        self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def issue_ul(self, command_and_arg, client_socket, eof_token):
         """
@@ -93,7 +91,10 @@ class Client:
         :param client_socket: the active client socket object.
         :param eof_token: a token to indicate the end of the message.
         """
-        raise NotImplementedError('Your implementation here.')
+        client_socket.sendall(command_and_arg.encode() + eof_token)
+        file = open(command_and_arg.split(" ")[1].strip(), 'rb')
+        client_socket.sendall(file.read())
+        self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def issue_dl(self, command_and_arg, client_socket, eof_token):
         """
@@ -106,7 +107,11 @@ class Client:
         :param eof_token: a token to indicate the end of the message.
         :return:
         """
-        raise NotImplementedError('Your implementation here.')
+        client_socket.sendall(command_and_arg.encode() + eof_token)
+        file_data = client_socket.recv(409600)
+        with open(command_and_arg.split(" ")[1].strip(), "wb") as file:
+            file.write(file_data)
+        self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def issue_info(self, command_and_arg, client_socket, eof_token):
         """
@@ -118,7 +123,10 @@ class Client:
         :param eof_token: a token to indicate the end of the message.
         :return: the size of file in string
         """
-        raise NotImplementedError('Your implementation here.')
+        client_socket.sendall(command_and_arg.encode() + eof_token)
+        file_size = client_socket.recv(1024)
+        print("Size in bytes: ", file_size.decode())
+        self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def issue_mv(self, command_and_arg, client_socket, eof_token):
         """
@@ -129,7 +137,8 @@ class Client:
         :param client_socket: the active client socket object.
         :param eof_token: a token to indicate the end of the message.
         """
-        raise NotImplementedError('Your implementation here.')
+        client_socket.sendall(command_and_arg.encode() + eof_token)
+        self.receive_message_ending_with_token(client_socket, 1024, eof_token)
 
     def start(self):
         """
@@ -141,13 +150,22 @@ class Client:
         while True:
             command = input("Enter the command: ")
             if command == "exit":
+                self.client_socket.sendall(command.encode() + eof_token)
                 break
             elif "cd" in command:
                 self.issue_cd(command, self.client_socket, eof_token)
             elif "mkdir" in command:
                 self.issue_mkdir(command, self.client_socket, eof_token)
             elif "rm" in command:
-                self.issue_rm(command, self.client_socket, eof_token);
+                self.issue_rm(command, self.client_socket, eof_token)
+            elif "mv" in command:
+                self.issue_mv(command, self.client_socket, eof_token)
+            elif "info" in command:
+                self.issue_info(command, self.client_socket, eof_token)
+            elif "dl" in command:
+                self.issue_dl(command, self.client_socket, eof_token)
+            elif "ul" in command:
+                self.issue_ul(command, self.client_socket, eof_token)
         self.client_socket.close()
 
     # get user input

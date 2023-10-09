@@ -7,6 +7,8 @@ import shutil
 from pathlib import Path
 import time
 
+eof_token = ""
+
 
 class Server:
     def __init__(self, host, port):
@@ -33,7 +35,7 @@ class Server:
                 conn, client_address = s.accept()
                 print(f"Accepted connection from {client_address}")
                 conn.sendall(self.generate_random_eof_token().encode())
-                client_socket = ClientThread(self, conn, client_address)
+                client_socket = ClientThread(self, conn, client_address, eof_token)
                 client_socket.start()
                 # Handle the client requests using ClientThread
 
@@ -65,8 +67,9 @@ class Server:
         return: the generated token.
         """
         charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^"
-
-        return '<' + ''.join(secrets.choice(charset) for _ in range(8)) + '>'
+        global eof_token
+        eof_token = '<' + ''.join(secrets.choice(charset) for _ in range(8)) + '>'
+        return eof_token
 
     def receive_message_ending_with_token(self, active_socket, buffer_size, eof_token):
         """
@@ -113,11 +116,11 @@ class Server:
         :param current_working_directory: string of current working directory
         :param object_name: name of sub directory or file to remove
         """
-        file_name = current_working_directory + "/" + object_name
+        file_name = current_working_directory + "\\" + object_name
         if os.path.isfile(file_name):
             os.remove(file_name)
         elif os.path.isdir(file_name):
-            os.rmdir(file_name)
+            shutil.rmtree(file_name)
         else:
             print("File not found..!")
         return os.getcwd()
@@ -134,8 +137,11 @@ class Server:
         :param service_socket: active socket with the client to read the payload/contents from.
         :param eof_token: a token to indicate the end of the message.
         """
-        raise NotImplementedError("Your implementation here.")
-
+        file_data = service_socket.recv(409600)
+        curr = os.path.join(current_working_directory, file_name)
+        with open(curr, "wb") as file:
+            file.write(file_data)
+        return os.getcwd()
     def handle_dl(
             self, current_working_directory, file_name, service_socket, eof_token
     ):
@@ -147,7 +153,9 @@ class Server:
         :param service_socket: active service socket with the client
         :param eof_token: a token to indicate the end of the message.
         """
-        raise NotImplementedError("Your implementation here.")
+        file = open(os.path.join(current_working_directory, file_name), 'rb')
+        service_socket.sendall(file.read())
+        return os.getcwd()
 
     def handle_info(self, current_working_directory, file_name):
         """
@@ -155,7 +163,10 @@ class Server:
         :param current_working_directory: string of current working directory
         :param file_name: name of sub directory or file to remove
         """
-        raise NotImplementedError('Your implementation here.')
+        path = os.path.join(current_working_directory, file_name)
+        file_stats = os.stat(path)
+
+        return os.getcwd(), file_stats.st_size
 
     def handle_mv(self, current_working_directory, file_name, destination_name):
         """
@@ -165,15 +176,23 @@ class Server:
         :param file_name: name of the file tp be moved / renamed
         :param destination_name: destination directory or new filename
         """
-        raise NotImplementedError('Your implementation here.')
+        source_path = os.path.join(current_working_directory, file_name)
+        destination_path = os.path.join(current_working_directory + "\\" + destination_name + "\\", file_name)
+        if os.path.isdir(destination_name) and os.path.isdir(source_path):
+            os.rename(source_path, destination_path)
+        elif os.path.isfile(file_name):
+            destination_path = os.path.join(current_working_directory, destination_name)
+            os.rename(source_path, destination_path)
+        return os.getcwd()
 
 
 class ClientThread(Thread):
-    def __init__(self, server: Server, service_socket: socket.socket, address: str):
+    def __init__(self, server: Server, service_socket: socket.socket, address: str, eof_token: str):
         Thread.__init__(self)
         self.server_obj = server
         self.service_socket = service_socket
         self.address = address
+        self.eof_token = eof_token
 
     def run(self):
         print("Connection from : ", self.address)
@@ -181,9 +200,9 @@ class ClientThread(Thread):
         formatted_working_dir = self.server_obj.get_working_directory_info(curr_working_dir)
         self.service_socket.sendall(str.encode(formatted_working_dir))
         while True:
-            client_command = self.server_obj.receive_message_ending_with_token(self.service_socket, 1024, "hello123")
-            print("COMMAND RECEIVED: ", client_command)
-            if client_command == "exit":
+            client_command = self.server_obj.receive_message_ending_with_token(self.service_socket, 1024, eof_token)
+            print("Command: ", client_command)
+            if client_command.decode() == "exit":
                 break
             elif "cd" in client_command.decode():
                 new_working_dir = client_command.decode().split("cd")[1].strip()
@@ -194,9 +213,22 @@ class ClientThread(Thread):
             elif "rm" in client_command.decode():
                 object_name = client_command.decode().split("rm")[1].strip()
                 curr_working_dir = self.server_obj.handle_rm(curr_working_dir, object_name)
+            elif "mv" in client_command.decode():
+                arguments = client_command.decode().split("mv")[1].split(" ")
+                curr_working_dir = self.server_obj.handle_mv(curr_working_dir, arguments[1], arguments[2])
+            elif "info" in client_command.decode():
+                arguments = client_command.decode().split("info")[1].strip()
+                curr_working_dir, file_size = self.server_obj.handle_info(curr_working_dir, arguments)
+                self.service_socket.sendall(str.encode(str(file_size)))
+            elif "dl" in client_command.decode():
+                arguments = client_command.decode().split("dl")[1].strip()
+                curr_working_dir = self.server_obj.handle_dl(curr_working_dir, arguments, self.service_socket, eof_token)
+            elif "ul" in client_command.decode():
+                arguments = client_command.decode().split("ul")[1].strip()
+                curr_working_dir = self.server_obj.handle_ul(curr_working_dir, arguments, self.service_socket, eof_token)
 
             time.sleep(1)
-            formatted_working_dir = self.server_obj.get_working_directory_info(curr_working_dir)
+            formatted_working_dir = self.server_obj.get_working_directory_info(os.getcwd())
             self.service_socket.sendall(str.encode(formatted_working_dir))
         # establish working directory
 
@@ -209,7 +241,7 @@ class ClientThread(Thread):
 
         # send current dir info
 
-        # print('Connection closed from:', self.address)
+        print('Connection closed from:', self.address)
 
 
 def run_server():
