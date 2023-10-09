@@ -140,6 +140,7 @@ class Server:
         with open(curr, "wb") as file:
             file.write(file_data)
         return os.getcwd()
+
     def handle_dl(
             self, current_working_directory, file_name, service_socket, eof_token
     ):
@@ -182,6 +183,7 @@ class Server:
             os.rename(source_path, destination_path)
         return os.getcwd()
 
+
 class ClientThread(Thread):
     def __init__(self, server: Server, service_socket: socket.socket, address: str, eof_token: str):
         Thread.__init__(self)
@@ -194,7 +196,7 @@ class ClientThread(Thread):
         print("Connection from : ", self.address)
         curr_working_dir = os.getcwd()
         formatted_working_dir = self.server_obj.get_working_directory_info(curr_working_dir)
-        self.service_socket.sendall(str.encode(formatted_working_dir))
+        self.service_socket.sendall(str.encode(formatted_working_dir) + eof_token.encode())
         while True:
             client_command = self.server_obj.receive_message_ending_with_token(self.service_socket, 1024, eof_token)
             print("Command: ", client_command)
@@ -221,7 +223,8 @@ class ClientThread(Thread):
                 self.server_obj.handle_dl(curr_working_dir, arguments, self.service_socket, eof_token)
             elif "ul" in client_command.decode():
                 arguments = client_command.decode().split("ul")[1].strip()
-                curr_working_dir = self.server_obj.handle_ul(curr_working_dir, arguments, self.service_socket, eof_token)
+                curr_working_dir = self.server_obj.handle_ul(curr_working_dir, arguments, self.service_socket,
+                                                             eof_token)
 
             time.sleep(1)
             formatted_working_dir = self.server_obj.get_working_directory_info(os.getcwd())
