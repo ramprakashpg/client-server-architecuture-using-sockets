@@ -1,12 +1,10 @@
-import secrets
-import socket
-import random
-import sys
-from threading import Thread
 import os
+import secrets
 import shutil
-from pathlib import Path
+import socket
 import time
+from pathlib import Path
+from threading import Thread
 
 eof_token = ""
 
@@ -227,7 +225,7 @@ class ClientThread(Thread):
 
             time.sleep(1)
             formatted_working_dir = self.server_obj.get_working_directory_info(os.getcwd())
-            self.service_socket.sendall(str.encode(formatted_working_dir))
+            self.service_socket.sendall(str.encode(formatted_working_dir) + eof_token.encode())
         # establish working directory
 
         # send the current dir info
@@ -241,8 +239,6 @@ class ClientThread(Thread):
 
         print('Connection closed from:', self.address)
         self.service_socket.close()
-        sys.exit()
-
 
 
 def run_server():
