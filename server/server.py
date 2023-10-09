@@ -6,8 +6,6 @@ import time
 from pathlib import Path
 from threading import Thread
 
-eof_token = ""
-
 
 class Server:
     def __init__(self, host, port):
@@ -33,8 +31,9 @@ class Server:
             while True:
                 conn, client_address = s.accept()
                 print(f"Accepted connection from {client_address}")
-                conn.sendall(self.generate_random_eof_token().encode())
-                client_socket = ClientThread(self, conn, client_address, eof_token)
+                eof_token = self.generate_random_eof_token().encode()
+                conn.sendall(eof_token)
+                client_socket = ClientThread(self, conn, client_address, eof_token.decode())
                 client_socket.start()
                 # Handle the client requests using ClientThread
 
@@ -66,7 +65,6 @@ class Server:
         return: the generated token.
         """
         charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^"
-        global eof_token
         eof_token = '<' + ''.join(secrets.choice(charset) for _ in range(8)) + '>'
         return eof_token
 
@@ -153,7 +151,7 @@ class Server:
         :param eof_token: a token to indicate the end of the message.
         """
         file = open(os.path.join(current_working_directory, file_name), 'rb')
-        service_socket.sendall(file.read())
+        service_socket.sendall(file.read() + eof_token.encode())
 
     def handle_info(self, current_working_directory, file_name):
         """
@@ -176,7 +174,7 @@ class Server:
         """
         source_path = os.path.join(current_working_directory, file_name)
         destination_path = os.path.join(current_working_directory + "\\" + destination_name + "\\", file_name)
-        if os.path.isdir(destination_name) and os.path.isdir(source_path):
+        if os.path.isdir(destination_name):
             os.rename(source_path, destination_path)
         elif os.path.isfile(file_name):
             destination_path = os.path.join(current_working_directory, destination_name)
@@ -196,9 +194,10 @@ class ClientThread(Thread):
         print("Connection from : ", self.address)
         curr_working_dir = os.getcwd()
         formatted_working_dir = self.server_obj.get_working_directory_info(curr_working_dir)
-        self.service_socket.sendall(str.encode(formatted_working_dir) + eof_token.encode())
+        self.service_socket.sendall(str.encode(formatted_working_dir) + self.eof_token.encode())
         while True:
-            client_command = self.server_obj.receive_message_ending_with_token(self.service_socket, 1024, eof_token)
+            client_command = self.server_obj.receive_message_ending_with_token(self.service_socket, 1024,
+                                                                               self.eof_token)
             print("Command: ", client_command)
             if client_command.decode() == "exit":
                 break
@@ -220,15 +219,15 @@ class ClientThread(Thread):
                 self.service_socket.sendall(str.encode(str(file_size)))
             elif "dl" in client_command.decode():
                 arguments = client_command.decode().split("dl")[1].strip()
-                self.server_obj.handle_dl(curr_working_dir, arguments, self.service_socket, eof_token)
+                self.server_obj.handle_dl(curr_working_dir, arguments, self.service_socket, self.eof_token)
             elif "ul" in client_command.decode():
                 arguments = client_command.decode().split("ul")[1].strip()
                 curr_working_dir = self.server_obj.handle_ul(curr_working_dir, arguments, self.service_socket,
-                                                             eof_token)
+                                                             self.eof_token)
 
             time.sleep(1)
             formatted_working_dir = self.server_obj.get_working_directory_info(os.getcwd())
-            self.service_socket.sendall(str.encode(formatted_working_dir) + eof_token.encode())
+            self.service_socket.sendall(str.encode(formatted_working_dir) + self.eof_token.encode())
         # establish working directory
 
         # send the current dir info
